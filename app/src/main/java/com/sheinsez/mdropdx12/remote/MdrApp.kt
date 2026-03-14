@@ -1,4 +1,4 @@
-package com.sheinsez.milkwave.remote
+package com.sheinsez.mdropdx12.remote
 
 import android.app.Application
 

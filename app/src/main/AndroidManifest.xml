@@ -10,7 +10,7 @@
     <application
         android:name=".MdrApp"
         android:allowBackup="true"
-        android:label="MDR Android"
+        android:label="MDx12 Remote"
         android:supportsRtl="true"
         android:theme="@style/Theme.Material3.DayNight.NoActionBar">
 
