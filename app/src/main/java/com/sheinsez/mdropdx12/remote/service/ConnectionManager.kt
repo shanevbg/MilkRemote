@@ -2,17 +2,21 @@ package com.sheinsez.mdropdx12.remote.service
 
 import com.sheinsez.mdropdx12.remote.network.ConnectionState
 import com.sheinsez.mdropdx12.remote.network.TcpClient
+import com.sheinsez.mdropdx12.remote.network.discovery.MdnsDiscovery
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 class ConnectionManager(private val scope: CoroutineScope) {
     val tcpClient = TcpClient(scope)
+    var mdnsDiscovery: MdnsDiscovery? = null  // Set from Activity/Application with context
     private var reconnectJob: Job? = null
     private var lastHost: String? = null
     private var lastPort: Int = 9270
     private var lastPin: String = ""
     private var lastDeviceId: String = ""
     private var lastDeviceName: String = ""
+    private var lastServerName: String = ""  // mDNS service name for re-discovery
+    private var consecutiveFailures: Int = 0
 
     private val _isReconnecting = MutableStateFlow(false)
     val isReconnecting: StateFlow<Boolean> = _isReconnecting
@@ -60,19 +64,47 @@ class ConnectionManager(private val scope: CoroutineScope) {
         stopReconnect()
     }
 
+    fun setServerName(name: String) { lastServerName = name }
+
     private fun startReconnect() {
         if (reconnectJob?.isActive == true) return
         _isReconnecting.value = true
+        consecutiveFailures = 0
         reconnectJob = scope.launch {
             while (isActive && tcpClient.connectionState.value == ConnectionState.Disconnected) {
                 delay(2000)
                 lastHost?.let { host ->
                     tcpClient.connect(host, lastPort, lastPin, lastDeviceId, lastDeviceName)
                     delay(3000)
+                    // Check if still disconnected after attempt
+                    if (tcpClient.connectionState.value == ConnectionState.Disconnected) {
+                        consecutiveFailures++
+                        // After 3 failures, try mDNS re-discovery (server may have restarted on new port)
+                        if (consecutiveFailures >= 3 && lastServerName.isNotEmpty()) {
+                            tryRediscover()
+                        }
+                    } else {
+                        consecutiveFailures = 0
+                    }
                 }
             }
             _isReconnecting.value = false
         }
+    }
+
+    private suspend fun tryRediscover() {
+        val discovery = mdnsDiscovery ?: return
+        discovery.startDiscovery()
+        delay(3000) // Give mDNS time to find services
+        val servers = discovery.servers.value
+        val match = servers.find { it.name == lastServerName }
+        if (match != null && (match.host != lastHost || match.port != lastPort)) {
+            // Server restarted on a different host/port — update and retry
+            lastHost = match.host
+            lastPort = match.port
+            consecutiveFailures = 0
+        }
+        discovery.stopDiscovery()
     }
 
     private fun stopReconnect() {
