@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sheinsez.mdropdx12.remote.BuildConfig
 import com.sheinsez.mdropdx12.remote.viewmodel.RemoteViewModel
 import com.sheinsez.mdropdx12.remote.viewmodel.SettingsViewModel
 
@@ -181,12 +180,12 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                text = "Version 1.0.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "Package: ${BuildConfig.APPLICATION_ID}",
+                text = "Package: com.sheinsez.mdropdx12.remote",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
