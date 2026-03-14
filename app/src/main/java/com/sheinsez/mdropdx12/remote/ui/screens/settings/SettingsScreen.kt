@@ -15,6 +15,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sheinsez.mdropdx12.remote.network.ConnectionState
 import com.sheinsez.mdropdx12.remote.network.discovery.MdnsDiscovery
 import com.sheinsez.mdropdx12.remote.viewmodel.RemoteViewModel
 import com.sheinsez.mdropdx12.remote.viewmodel.SettingsViewModel
@@ -29,6 +30,8 @@ fun SettingsScreen(
     val deviceNamePref by settingsVm.deviceName.collectAsState(initial = "")
     val pinPref by settingsVm.pin.collectAsState(initial = "")
     val navMode by settingsVm.navMode.collectAsState(initial = "tabs")
+    val connectionState by remoteVm.connectionManager.connectionState.collectAsStateWithLifecycle()
+    val isBusy = connectionState == ConnectionState.Connecting || connectionState == ConnectionState.AuthPending
 
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("9270") }
@@ -95,21 +98,28 @@ fun SettingsScreen(
                             tint = MaterialTheme.colorScheme.primary)
                     },
                     trailingContent = {
-                        Button(onClick = {
-                            host = server.host
-                            port = server.port.toString()
-                            // Auto-connect
-                            remoteVm.connectionManager.setServerName(server.name)
-                            settingsVm.saveLastConnection(server.host, server.port)
-                            remoteVm.connectionManager.connect(
-                                host = server.host,
-                                port = server.port,
-                                pin = pin,
-                                deviceId = deviceId,
-                                deviceName = deviceName.ifBlank { "Android" },
-                            )
-                        }) {
-                            Text("Connect")
+                        Button(
+                            onClick = {
+                                host = server.host
+                                port = server.port.toString()
+                                remoteVm.connectionManager.setServerName(server.name)
+                                settingsVm.saveLastConnection(server.host, server.port)
+                                remoteVm.connectionManager.connect(
+                                    host = server.host,
+                                    port = server.port,
+                                    pin = pin,
+                                    deviceId = deviceId,
+                                    deviceName = deviceName.ifBlank { "Android" },
+                                )
+                            },
+                            enabled = !isBusy,
+                        ) {
+                            Text(when (connectionState) {
+                                ConnectionState.Connecting -> "Connecting..."
+                                ConnectionState.AuthPending -> "Authorizing..."
+                                ConnectionState.Connected -> "Connected"
+                                else -> "Connect"
+                            })
                         }
                     },
                 )
@@ -189,12 +199,17 @@ fun SettingsScreen(
                     deviceName = deviceName.ifBlank { "Android" },
                 )
             },
-            enabled = host.isNotBlank(),
+            enabled = host.isNotBlank() && !isBusy,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
         ) {
-            Text("Connect")
+            Text(when (connectionState) {
+                ConnectionState.Connecting -> "Connecting..."
+                ConnectionState.AuthPending -> "Waiting for authorization..."
+                ConnectionState.Connected -> "Connected"
+                else -> "Connect"
+            })
         }
 
         Spacer(Modifier.height(8.dp))

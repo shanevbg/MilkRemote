@@ -44,19 +44,38 @@ fun ConnectionHeader(
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }
-        if (isReconnecting) {
-            Text(
-                text = "Reconnecting...",
-                style = MaterialTheme.typography.bodySmall,
-                fontStyle = FontStyle.Italic,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else if (presetName.isNotBlank()) {
-            Text(
-                text = presetName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        when {
+            connectionState == ConnectionState.AuthPending -> {
+                Text(
+                    text = "Waiting for authorization on PC...",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontStyle = FontStyle.Italic,
+                    color = Color(0xFFFFC107),
+                )
+            }
+            connectionState == ConnectionState.Connecting -> {
+                Text(
+                    text = "Connecting...",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontStyle = FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            isReconnecting -> {
+                Text(
+                    text = "Reconnecting...",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontStyle = FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            presetName.isNotBlank() -> {
+                Text(
+                    text = presetName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
