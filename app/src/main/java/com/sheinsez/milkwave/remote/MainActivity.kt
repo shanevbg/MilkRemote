@@ -1,10 +1,10 @@
-package com.milkwave.remote
+package com.sheinsez.milkwave.remote
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Text
-import com.milkwave.remote.ui.theme.MdrTheme
+import com.sheinsez.milkwave.remote.ui.theme.MdrTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.milkwave.remote"
+    namespace = "com.sheinsez.milkwave.remote"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.milkwave.remote"
+        applicationId = "com.sheinsez.milkwave.remote"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

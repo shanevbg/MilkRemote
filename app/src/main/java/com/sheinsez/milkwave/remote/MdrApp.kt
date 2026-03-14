@@ -1,4 +1,4 @@
-package com.milkwave.remote
+package com.sheinsez.milkwave.remote
 
 import android.app.Application
 

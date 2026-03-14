@@ -1,4 +1,4 @@
-package com.milkwave.remote.ui.theme
+package com.sheinsez.milkwave.remote.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
