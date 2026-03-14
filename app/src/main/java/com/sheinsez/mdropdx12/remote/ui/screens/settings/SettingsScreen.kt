@@ -3,13 +3,19 @@ package com.sheinsez.mdropdx12.remote.ui.screens.settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sheinsez.mdropdx12.remote.network.discovery.MdnsDiscovery
 import com.sheinsez.mdropdx12.remote.viewmodel.RemoteViewModel
 import com.sheinsez.mdropdx12.remote.viewmodel.SettingsViewModel
 
@@ -29,6 +35,16 @@ fun SettingsScreen(
     var pin by remember(pinPref) { mutableStateOf(pinPref) }
     var deviceName by remember(deviceNamePref) { mutableStateOf(deviceNamePref) }
 
+    // mDNS discovery
+    val context = LocalContext.current
+    val discovery = remember { MdnsDiscovery(context) }
+    val discoveredServers by discovery.servers.collectAsStateWithLifecycle()
+    var isScanning by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose { discovery.stopDiscovery() }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -37,6 +53,69 @@ fun SettingsScreen(
     ) {
         // Connection section
         SectionHeader("Connection")
+
+        // Auto-discovery
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                if (isScanning) Icons.Default.WifiFind else Icons.Default.Wifi,
+                contentDescription = null,
+                tint = if (isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = if (isScanning) "Scanning..." else "Discover servers on LAN",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            FilledTonalButton(onClick = {
+                if (isScanning) {
+                    discovery.stopDiscovery()
+                    isScanning = false
+                } else {
+                    discovery.startDiscovery()
+                    isScanning = true
+                }
+            }) {
+                Text(if (isScanning) "Stop" else "Scan")
+            }
+        }
+
+        if (discoveredServers.isNotEmpty()) {
+            discoveredServers.forEach { server ->
+                ListItem(
+                    headlineContent = { Text(server.name) },
+                    supportingContent = { Text("${server.host}:${server.port}") },
+                    leadingContent = {
+                        Icon(Icons.Default.Wifi, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary)
+                    },
+                    trailingContent = {
+                        Button(onClick = {
+                            host = server.host
+                            port = server.port.toString()
+                            // Auto-connect
+                            remoteVm.connectionManager.setServerName(server.name)
+                            settingsVm.saveLastConnection(server.host, server.port)
+                            remoteVm.connectionManager.connect(
+                                host = server.host,
+                                port = server.port,
+                                pin = pin,
+                                deviceId = deviceId,
+                                deviceName = deviceName.ifBlank { "Android" },
+                            )
+                        }) {
+                            Text("Connect")
+                        }
+                    },
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        }
 
         if (savedServers.isNotEmpty()) {
             Text(
@@ -63,6 +142,13 @@ fun SettingsScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
         }
 
+        // Manual connection
+        Text(
+            text = "Manual connection",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
         OutlinedTextField(
             value = host,
             onValueChange = { host = it },
