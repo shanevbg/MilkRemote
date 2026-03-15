@@ -31,6 +31,13 @@ object CommandBuilder {
     fun fftAttack(value: Float) = "FFT_ATTACK=$value"
     fun fftDecay(value: Float) = "FFT_DECAY=$value"
 
+    fun setDeviceVolume(value: Float) = "SET_DEVICE_VOLUME=${"%.2f".format(value)}"
+    fun setDeviceMute(muted: Boolean) = "SET_DEVICE_MUTE=${if (muted) 1 else 0}"
+    fun getDeviceVolume() = "GET_DEVICE_VOLUME"
+    fun toggleDeviceMute() = "TOGGLE_DEVICE_MUTE"
+    fun getAudioDevices() = "GET_AUDIO_DEVICES"
+    fun setAudioDevice(name: String) = "DEVICE=OUT|$name"
+
     fun shaderImport(json: String) = "SHADER_IMPORT=$json"
     fun shaderGlsl(code: String) = "SHADER_GLSL=$code"
 

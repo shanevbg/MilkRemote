@@ -19,16 +19,28 @@ fun CollapsibleSection(
     title: String,
     modifier: Modifier = Modifier,
     initiallyExpanded: Boolean = false,
+    expanded: Boolean? = null,
+    onExpandedChange: ((Boolean) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(initiallyExpanded) }
+    // Use external state if provided, otherwise local state
+    var localExpanded by remember { mutableStateOf(initiallyExpanded) }
+    val isExpanded = expanded ?: localExpanded
+    val toggleExpanded = {
+        val newValue = !isExpanded
+        if (onExpandedChange != null) {
+            onExpandedChange(newValue)
+        } else {
+            localExpanded = newValue
+        }
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded }
+                .clickable { toggleExpanded() }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -39,13 +51,13 @@ fun CollapsibleSection(
                 modifier = Modifier.weight(1f),
             )
             Icon(
-                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (expanded) "Collapse" else "Expand",
+                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (isExpanded) "Collapse" else "Expand",
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
         AnimatedVisibility(
-            visible = expanded,
+            visible = isExpanded,
             enter = expandVertically(),
             exit = shrinkVertically(),
         ) {

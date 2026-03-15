@@ -6,21 +6,31 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sheinsez.mdropdx12.remote.ui.components.CollapsibleSection
 import com.sheinsez.mdropdx12.remote.ui.components.SliderControl
 import com.sheinsez.mdropdx12.remote.viewmodel.RemoteViewModel
+import com.sheinsez.mdropdx12.remote.viewmodel.SettingsViewModel
 
 @Composable
 fun RemoteScreen(
     vm: RemoteViewModel = viewModel(),
+    settingsVm: SettingsViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsState()
+    val sectionOrder by settingsVm.sectionOrder.collectAsState(initial = SettingsViewModel.DEFAULT_SECTION_ORDER)
+    val pinnedSection by settingsVm.pinnedSection.collectAsState(initial = "")
+    val expandedSections by settingsVm.expandedSections.collectAsState(initial = emptySet())
 
     Column(
         modifier = Modifier
@@ -28,6 +38,43 @@ fun RemoteScreen(
             .verticalScroll(rememberScrollState())
             .padding(vertical = 8.dp),
     ) {
+        // Volume control row (fixed, always visible)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = { vm.toggleMute() }) {
+                Icon(
+                    imageVector = if (state.muted)
+                        Icons.AutoMirrored.Filled.VolumeOff
+                    else
+                        Icons.AutoMirrored.Filled.VolumeUp,
+                    contentDescription = if (state.muted) "Unmute" else "Mute",
+                    tint = if (state.muted)
+                        MaterialTheme.colorScheme.error
+                    else
+                        MaterialTheme.colorScheme.primary,
+                )
+            }
+            Slider(
+                value = state.volume,
+                onValueChange = { vm.updateVolume(it) },
+                valueRange = 0f..1f,
+                enabled = !state.muted,
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(if (state.muted) 0.5f else 1f),
+            )
+            Text(
+                text = "${(state.volume * 100).roundToInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+
         // Transport controls
         Row(
             modifier = Modifier
@@ -51,6 +98,17 @@ fun RemoteScreen(
             }
         }
 
+        // Pinned section (rendered right after transport controls)
+        if (pinnedSection.isNotBlank()) {
+            RenderSection(
+                sectionId = pinnedSection,
+                vm = vm,
+                state = state,
+                expanded = pinnedSection in expandedSections,
+                onExpandedChange = { settingsVm.toggleSectionExpanded(pinnedSection, it) },
+            )
+        }
+
         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
         // Mode buttons grid
@@ -61,14 +119,13 @@ fun RemoteScreen(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
         val modeButtons = listOf(
-            "Fullscreen"   to "SIG_FULLSCREEN",
-            "Mirror"       to "SIG_MIRROR",
-            "Mirror WM"    to "SIG_MIRROR_WM",
-            "Watermark"    to "SIG_WATERMARK",
-            "Capture"      to "SIG_CAPTURE",
-            "Borderless"   to "SIG_BORDERLESS",
+            "Fullscreen"   to "FULLSCREEN",
+            "Mirror"       to "MIRROR",
+            "Mirror WM"    to "MIRROR_WM",
+            "Watermark"    to "WATERMARK",
+            "Capture"      to "CAPTURE",
+            "Borderless"   to "BORDERLESS_FS",
         )
-        // Fixed-height grid to avoid nested scroll conflicts
         val modeRows = (modeButtons.size + 2) / 3
         val modeGridHeight = (modeRows * 48 + (modeRows - 1) * 8 + 16).dp
         LazyVerticalGrid(
@@ -107,230 +164,265 @@ fun RemoteScreen(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
 
-        // Wave Controls
-        CollapsibleSection(title = "Wave Controls") {
-            SliderControl(
-                label = "Mode",
-                value = state.waveMode.toFloat(),
-                range = 0f..7f,
-                onValueChange = { vm.updateWaveParam("wave_mode", it.toInt().toString()) },
-                step = 1f,
-                valueFormat = { it.toInt().toString() },
+        // Dynamic sections in user-defined order (skip pinned, it's already rendered above)
+        sectionOrder.filter { it != pinnedSection }.forEach { sectionId ->
+            RenderSection(
+                sectionId = sectionId,
+                vm = vm,
+                state = state,
+                expanded = sectionId in expandedSections,
+                onExpandedChange = { settingsVm.toggleSectionExpanded(sectionId, it) },
             )
-            SliderControl(
-                label = "Alpha",
-                value = state.waveAlpha,
-                range = 0f..1f,
-                onValueChange = { vm.updateWaveParam("wave_a", "%.3f".format(it)) },
-            )
-            SliderControl(
-                label = "Scale",
-                value = state.waveScale,
-                range = 0f..2f,
-                onValueChange = { vm.updateWaveParam("wave_scale", "%.3f".format(it)) },
-            )
-            SliderControl(
-                label = "Zoom",
-                value = state.waveZoom,
-                range = 0f..2f,
-                onValueChange = { vm.updateWaveParam("zoom", "%.3f".format(it)) },
-            )
-            SliderControl(
-                label = "Warp",
-                value = state.waveWarp,
-                range = 0f..2f,
-                onValueChange = { vm.updateWaveParam("warp", "%.3f".format(it)) },
-            )
-            SliderControl(
-                label = "Rotation",
-                value = state.waveRotation,
-                range = -1f..1f,
-                onValueChange = { vm.updateWaveParam("rot", "%.3f".format(it)) },
-            )
-            SliderControl(
-                label = "Decay",
-                value = state.waveDecay,
-                range = 0f..1f,
-                onValueChange = { vm.updateWaveParam("decay", "%.3f".format(it)) },
-            )
-
-            // Toggle checkboxes
-            val toggles = listOf(
-                "Brighten"  to state.waveBrighten  to "wave_brighten",
-                "Darken"    to state.waveDarken    to "wave_darken",
-                "Solarize"  to state.waveSolarize  to "wave_solarize",
-                "Invert"    to state.waveInvert    to "wave_invert",
-                "Additive"  to state.waveAdditive  to "additivewave",
-                "Thick"     to state.waveThick     to "wave_usedots",
-            )
-            toggles.chunked(2).forEach { pair ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                ) {
-                    pair.forEach { (labelAndValue, key) ->
-                        val (label, checked) = labelAndValue
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = checked,
-                                onCheckedChange = { vm.updateWaveParam(key, if (it) "1" else "0") },
-                            )
-                            Text(label, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Color
-        CollapsibleSection(title = "Color") {
-            SliderControl(
-                label = "Hue",
-                value = state.colorHue,
-                range = 0f..360f,
-                onValueChange = { vm.updateColor(hue = it) },
-                valueFormat = { "%.0f°".format(it) },
-            )
-            SliderControl(
-                label = "Saturation",
-                value = state.colorSaturation,
-                range = 0f..2f,
-                onValueChange = { vm.updateColor(saturation = it) },
-            )
-            SliderControl(
-                label = "Brightness",
-                value = state.colorBrightness,
-                range = 0f..2f,
-                onValueChange = { vm.updateColor(brightness = it) },
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(
-                    checked = state.hueAuto,
-                    onCheckedChange = { vm.updateWaveParam("hue_auto", if (it) "1" else "0") },
-                )
-                Text("Auto Hue", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        // Variables
-        CollapsibleSection(title = "Variables") {
-            SliderControl(
-                label = "Time",
-                value = state.varTime,
-                range = 0f..2f,
-                onValueChange = { vm.updateVariable(time = it) },
-            )
-            SliderControl(
-                label = "Intensity",
-                value = state.varIntensity,
-                range = 0f..2f,
-                onValueChange = { vm.updateVariable(intensity = it) },
-            )
-            SliderControl(
-                label = "Quality",
-                value = state.varQuality,
-                range = 0f..1f,
-                onValueChange = { vm.updateVariable(quality = it) },
-            )
-        }
-
-        // Audio
-        CollapsibleSection(title = "Audio") {
-            SliderControl(
-                label = "Amp Left",
-                value = state.ampLeft,
-                range = 0f..4f,
-                onValueChange = { vm.updateAmp(it, state.ampRight) },
-            )
-            SliderControl(
-                label = "Amp Right",
-                value = state.ampRight,
-                range = 0f..4f,
-                onValueChange = { vm.updateAmp(state.ampLeft, it) },
-            )
-            SliderControl(
-                label = "FFT Attack",
-                value = state.fftAttack,
-                range = 0f..1f,
-                onValueChange = { vm.updateFftAttack(it) },
-            )
-            SliderControl(
-                label = "FFT Decay",
-                value = state.fftDecay,
-                range = 0f..1f,
-                onValueChange = { vm.updateFftDecay(it) },
-            )
-        }
-
-        // Message
-        CollapsibleSection(title = "Message") {
-            var messageText by remember { mutableStateOf("") }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = messageText,
-                    onValueChange = { messageText = it },
-                    label = { Text("Message text") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                )
-                Button(
-                    onClick = {
-                        if (messageText.isNotBlank()) {
-                            vm.sendMessage(messageText)
-                            messageText = ""
-                        }
-                    },
-                ) {
-                    Text("Send")
-                }
-            }
-        }
-
-        // Raw Command
-        CollapsibleSection(title = "Raw Command") {
-            var rawText by remember { mutableStateOf("") }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = rawText,
-                    onValueChange = { rawText = it },
-                    label = { Text("Command") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                )
-                Button(
-                    onClick = {
-                        if (rawText.isNotBlank()) {
-                            vm.sendRaw(rawText)
-                            rawText = ""
-                        }
-                    },
-                ) {
-                    Text("Send")
-                }
-            }
         }
 
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun RenderSection(
+    sectionId: String,
+    vm: RemoteViewModel,
+    state: com.sheinsez.mdropdx12.remote.data.model.VisualizerState,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+) {
+    val title = SettingsViewModel.SECTION_LABELS[sectionId] ?: sectionId
+    CollapsibleSection(
+        title = title,
+        expanded = expanded,
+        onExpandedChange = onExpandedChange,
+    ) {
+        when (sectionId) {
+            "wave" -> WaveContent(vm, state)
+            "color" -> ColorContent(vm, state)
+            "variables" -> VariablesContent(vm, state)
+            "audio" -> AudioContent(vm, state)
+            "message" -> MessageContent(vm)
+            "raw" -> RawCommandContent(vm)
+        }
+    }
+}
+
+@Composable
+private fun WaveContent(vm: RemoteViewModel, state: com.sheinsez.mdropdx12.remote.data.model.VisualizerState) {
+    SliderControl(
+        label = "Mode",
+        value = state.waveMode.toFloat(),
+        range = 0f..7f,
+        onValueChange = { vm.updateWaveParam("wave_mode", it.toInt().toString()) },
+        step = 1f,
+        valueFormat = { it.toInt().toString() },
+    )
+    SliderControl(
+        label = "Alpha",
+        value = state.waveAlpha,
+        range = 0f..1f,
+        onValueChange = { vm.updateWaveParam("wave_a", "%.3f".format(it)) },
+    )
+    SliderControl(
+        label = "Scale",
+        value = state.waveScale,
+        range = 0f..2f,
+        onValueChange = { vm.updateWaveParam("wave_scale", "%.3f".format(it)) },
+    )
+    SliderControl(
+        label = "Zoom",
+        value = state.waveZoom,
+        range = 0f..2f,
+        onValueChange = { vm.updateWaveParam("zoom", "%.3f".format(it)) },
+    )
+    SliderControl(
+        label = "Warp",
+        value = state.waveWarp,
+        range = 0f..2f,
+        onValueChange = { vm.updateWaveParam("warp", "%.3f".format(it)) },
+    )
+    SliderControl(
+        label = "Rotation",
+        value = state.waveRotation,
+        range = -1f..1f,
+        onValueChange = { vm.updateWaveParam("rot", "%.3f".format(it)) },
+    )
+    SliderControl(
+        label = "Decay",
+        value = state.waveDecay,
+        range = 0f..1f,
+        onValueChange = { vm.updateWaveParam("decay", "%.3f".format(it)) },
+    )
+
+    val toggles = listOf(
+        "Brighten"  to state.waveBrighten  to "wave_brighten",
+        "Darken"    to state.waveDarken    to "wave_darken",
+        "Solarize"  to state.waveSolarize  to "wave_solarize",
+        "Invert"    to state.waveInvert    to "wave_invert",
+        "Additive"  to state.waveAdditive  to "additivewave",
+        "Thick"     to state.waveThick     to "wave_usedots",
+    )
+    toggles.chunked(2).forEach { pair ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+        ) {
+            pair.forEach { (labelAndValue, key) ->
+                val (label, checked) = labelAndValue
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = { vm.updateWaveParam(key, if (it) "1" else "0") },
+                    )
+                    Text(label, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColorContent(vm: RemoteViewModel, state: com.sheinsez.mdropdx12.remote.data.model.VisualizerState) {
+    SliderControl(
+        label = "Hue",
+        value = state.colorHue,
+        range = 0f..360f,
+        onValueChange = { vm.updateColor(hue = it) },
+        valueFormat = { "%.0f\u00B0".format(it) },
+    )
+    SliderControl(
+        label = "Saturation",
+        value = state.colorSaturation,
+        range = 0f..2f,
+        onValueChange = { vm.updateColor(saturation = it) },
+    )
+    SliderControl(
+        label = "Brightness",
+        value = state.colorBrightness,
+        range = 0f..2f,
+        onValueChange = { vm.updateColor(brightness = it) },
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = state.hueAuto,
+            onCheckedChange = { vm.updateWaveParam("hue_auto", if (it) "1" else "0") },
+        )
+        Text("Auto Hue", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun VariablesContent(vm: RemoteViewModel, state: com.sheinsez.mdropdx12.remote.data.model.VisualizerState) {
+    SliderControl(
+        label = "Time",
+        value = state.varTime,
+        range = 0f..2f,
+        onValueChange = { vm.updateVariable(time = it) },
+    )
+    SliderControl(
+        label = "Intensity",
+        value = state.varIntensity,
+        range = 0f..2f,
+        onValueChange = { vm.updateVariable(intensity = it) },
+    )
+    SliderControl(
+        label = "Quality",
+        value = state.varQuality,
+        range = 0f..1f,
+        onValueChange = { vm.updateVariable(quality = it) },
+    )
+}
+
+@Composable
+private fun AudioContent(vm: RemoteViewModel, state: com.sheinsez.mdropdx12.remote.data.model.VisualizerState) {
+    SliderControl(
+        label = "Amp Left",
+        value = state.ampLeft,
+        range = 0f..4f,
+        onValueChange = { vm.updateAmp(it, state.ampRight) },
+    )
+    SliderControl(
+        label = "Amp Right",
+        value = state.ampRight,
+        range = 0f..4f,
+        onValueChange = { vm.updateAmp(state.ampLeft, it) },
+    )
+    SliderControl(
+        label = "FFT Attack",
+        value = state.fftAttack,
+        range = 0f..1f,
+        onValueChange = { vm.updateFftAttack(it) },
+    )
+    SliderControl(
+        label = "FFT Decay",
+        value = state.fftDecay,
+        range = 0f..1f,
+        onValueChange = { vm.updateFftDecay(it) },
+    )
+}
+
+@Composable
+private fun MessageContent(vm: RemoteViewModel) {
+    var messageText by remember { mutableStateOf("") }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = messageText,
+            onValueChange = { messageText = it },
+            label = { Text("Message text") },
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+        )
+        Button(
+            onClick = {
+                if (messageText.isNotBlank()) {
+                    vm.sendMessage(messageText)
+                    messageText = ""
+                }
+            },
+        ) {
+            Text("Send")
+        }
+    }
+}
+
+@Composable
+private fun RawCommandContent(vm: RemoteViewModel) {
+    var rawText by remember { mutableStateOf("") }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = rawText,
+            onValueChange = { rawText = it },
+            label = { Text("Command") },
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+        )
+        Button(
+            onClick = {
+                if (rawText.isNotBlank()) {
+                    vm.sendRaw(rawText)
+                    rawText = ""
+                }
+            },
+        ) {
+            Text("Send")
+        }
     }
 }

@@ -57,6 +57,31 @@ object MessageParser {
         )
     }
 
+    fun parseDeviceVolume(message: String, current: VisualizerState): VisualizerState? {
+        if (!message.startsWith("DEVICE_VOLUME=")) return null
+        // Format: DEVICE_VOLUME=0.75|muted=0
+        val parts = message.removePrefix("DEVICE_VOLUME=").split("|")
+        val vol = parts.firstOrNull()?.toFloatOrNull() ?: return null
+        val muted = parts.firstOrNull { it.startsWith("muted=") }
+            ?.removePrefix("muted=")?.toIntOrNull()?.let { it != 0 } ?: current.muted
+        return current.copy(volume = vol, muted = muted)
+    }
+
+    fun parseDeviceMute(message: String, current: VisualizerState): VisualizerState? {
+        if (!message.startsWith("DEVICE_MUTE=")) return null
+        val muted = message.removePrefix("DEVICE_MUTE=").toIntOrNull()?.let { it != 0 } ?: return null
+        return current.copy(muted = muted)
+    }
+
+    fun parseAudioDevices(message: String, current: VisualizerState): VisualizerState? {
+        if (!message.startsWith("AUDIO_DEVICES|")) return null
+        val params = parseKeyValue(message.removePrefix("AUDIO_DEVICES|"))
+        val count = params["count"]?.toIntOrNull() ?: return null
+        val devices = (0 until count).mapNotNull { i -> params["dev$i"] }
+        val active = params["active"] ?: ""
+        return current.copy(audioDevices = devices, activeDevice = active)
+    }
+
     fun parseMirrors(message: String): MirrorState? {
         if (!message.startsWith("MIRRORS|")) return null
         val sections = message.removePrefix("MIRRORS|").split("|")

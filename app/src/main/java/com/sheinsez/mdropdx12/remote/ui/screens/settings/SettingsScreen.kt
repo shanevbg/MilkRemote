@@ -4,6 +4,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material3.*
@@ -46,6 +50,12 @@ fun SettingsScreen(
 
     DisposableEffect(Unit) {
         onDispose { discovery.stopDiscovery() }
+    }
+
+    LaunchedEffect(connectionState) {
+        if (connectionState == ConnectionState.Connected) {
+            remoteVm.requestAudioDevices()
+        }
     }
 
     Column(
@@ -267,6 +277,139 @@ fun SettingsScreen(
             Switch(
                 checked = navMode == "drawer",
                 onCheckedChange = { settingsVm.setNavMode(if (it) "drawer" else "tabs") },
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Audio Device section
+        val visualizerState by remoteVm.state.collectAsState()
+
+        SectionHeader("Audio Device")
+
+        if (visualizerState.audioDevices.isEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "No devices loaded",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                FilledTonalButton(onClick = { remoteVm.requestAudioDevices() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Load")
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Select output device",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { remoteVm.requestAudioDevices() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh devices")
+                }
+            }
+            visualizerState.audioDevices.forEach { device ->
+                val isActive = device == visualizerState.activeDevice
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = device,
+                            color = if (isActive) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface,
+                        )
+                    },
+                    trailingContent = {
+                        if (isActive) {
+                            Text(
+                                text = "Active",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            TextButton(onClick = { remoteVm.setAudioDevice(device) }) {
+                                Text("Use")
+                            }
+                        }
+                    },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Section Layout
+        val sectionOrder by settingsVm.sectionOrder.collectAsState(initial = SettingsViewModel.DEFAULT_SECTION_ORDER)
+        val pinnedSection by settingsVm.pinnedSection.collectAsState(initial = "")
+
+        SectionHeader("Section Layout")
+        Text(
+            text = "Reorder sections and pin one below Prev/Next buttons",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        sectionOrder.forEachIndexed { index, sectionId ->
+            val label = SettingsViewModel.SECTION_LABELS[sectionId] ?: sectionId
+            val isPinned = sectionId == pinnedSection
+            ListItem(
+                headlineContent = {
+                    Text(
+                        text = label,
+                        color = if (isPinned) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                    )
+                },
+                leadingContent = {
+                    IconButton(
+                        onClick = {
+                            settingsVm.setPinnedSection(if (isPinned) "" else sectionId)
+                        },
+                    ) {
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = if (isPinned) "Unpin" else "Pin",
+                            tint = if (isPinned) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                trailingContent = {
+                    Row {
+                        IconButton(
+                            onClick = { settingsVm.moveSectionUp(sectionId) },
+                            enabled = index > 0,
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Move up",
+                            )
+                        }
+                        IconButton(
+                            onClick = { settingsVm.moveSectionDown(sectionId) },
+                            enabled = index < sectionOrder.size - 1,
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Move down",
+                            )
+                        }
+                    }
+                },
             )
         }
 

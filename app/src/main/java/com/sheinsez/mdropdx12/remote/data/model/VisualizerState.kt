@@ -30,4 +30,8 @@ data class VisualizerState(
     val ampRight: Float = 1f,
     val fftAttack: Float = 0.5f,
     val fftDecay: Float = 0.5f,
+    val volume: Float = 1.0f,
+    val muted: Boolean = false,
+    val audioDevices: List<String> = emptyList(),
+    val activeDevice: String = "",
 )
