@@ -11,3 +11,5 @@
 *.ap_
 *.aab
 .superpowers/
+CLAUDE.md
+.claude/
