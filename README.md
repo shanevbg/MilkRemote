@@ -1,10 +1,10 @@
-# MDx12 Remote
+# MilkRemote
 
 Android companion app for [MilkDrop DX12 (MDropDX12)](https://github.com/shanevbg/MDropDX12) — control your music visualizer from your phone over Wi-Fi.
 
 ## What It Does
 
-MDx12 Remote connects to a MDropDX12 instance on your LAN and lets you:
+MilkRemote connects to a MDropDX12 instance on your LAN and lets you:
 
 - **Volume & Mute** — adjust the Windows audio device volume
 - **Presets** — cycle through visualizer presets (prev / next)
@@ -58,7 +58,7 @@ Run > Run 'app' with your device selected.
 ## Connect
 
 1. **Start MDropDX12** on your PC with TCP remote enabled.
-2. **Launch MDx12 Remote** on your phone.
+2. **Launch MilkRemote** on your phone.
 3. Go to **Settings** and either:
    - Tap **Scan for Servers** — the app finds your PC automatically via mDNS/UDP beacon.
    - Enter the IP and port manually under **Manual Connection**.

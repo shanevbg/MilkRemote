@@ -419,7 +419,7 @@ fun SettingsScreen(
         SectionHeader("About")
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             Text(
-                text = "MDx12 Remote",
+                text = "MilkRemote",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
