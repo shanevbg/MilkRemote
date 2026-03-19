@@ -39,7 +39,11 @@ fun ConnectionHeader(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = serverName.ifBlank { "Not connected" },
+                text = when {
+                    connectionState == ConnectionState.Disconnected -> "Not connected"
+                    serverName.isNotBlank() -> serverName
+                    else -> "Connected"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )

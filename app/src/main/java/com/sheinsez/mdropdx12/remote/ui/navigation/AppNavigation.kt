@@ -40,6 +40,7 @@ fun AppNavigation() {
 
     val connectionState by remoteVm.connectionManager.connectionState.collectAsStateWithLifecycle()
     val isReconnecting by remoteVm.connectionManager.isReconnecting.collectAsStateWithLifecycle()
+    val serverName by remoteVm.connectionManager.serverName.collectAsStateWithLifecycle()
     val state by remoteVm.state.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -48,7 +49,7 @@ fun AppNavigation() {
                 ConnectionHeader(
                     connectionState = connectionState,
                     presetName = state.presetName,
-                    serverName = "", // TODO: from settings
+                    serverName = serverName,
                     isReconnecting = isReconnecting,
                 )
                 MediaBar(

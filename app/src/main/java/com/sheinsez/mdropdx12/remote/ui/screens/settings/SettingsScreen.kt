@@ -201,6 +201,7 @@ fun SettingsScreen(
             onClick = {
                 val portInt = port.toIntOrNull() ?: 9270
                 settingsVm.saveLastConnection(host, portInt)
+                remoteVm.connectionManager.setServerName(host)
                 remoteVm.connectionManager.connect(
                     host = host,
                     port = portInt,

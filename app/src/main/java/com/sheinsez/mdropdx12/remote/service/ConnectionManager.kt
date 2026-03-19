@@ -15,7 +15,8 @@ class ConnectionManager(private val scope: CoroutineScope) {
     private var lastPin: String = ""
     private var lastDeviceId: String = ""
     private var lastDeviceName: String = ""
-    private var lastServerName: String = ""  // mDNS service name for re-discovery
+    private val _serverName = MutableStateFlow("")
+    val serverName: StateFlow<String> = _serverName
     private var consecutiveFailures: Int = 0
 
     private val _isReconnecting = MutableStateFlow(false)
@@ -64,7 +65,7 @@ class ConnectionManager(private val scope: CoroutineScope) {
         stopReconnect()
     }
 
-    fun setServerName(name: String) { lastServerName = name }
+    fun setServerName(name: String) { _serverName.value = name }
 
     private fun startReconnect() {
         if (reconnectJob?.isActive == true) return
@@ -80,7 +81,7 @@ class ConnectionManager(private val scope: CoroutineScope) {
                     if (tcpClient.connectionState.value == ConnectionState.Disconnected) {
                         consecutiveFailures++
                         // After 3 failures, try mDNS re-discovery (server may have restarted on new port)
-                        if (consecutiveFailures >= 3 && lastServerName.isNotEmpty()) {
+                        if (consecutiveFailures >= 3 && _serverName.value.isNotEmpty()) {
                             tryRediscover()
                         }
                     } else {
@@ -97,7 +98,7 @@ class ConnectionManager(private val scope: CoroutineScope) {
         discovery.startDiscovery()
         delay(3000) // Give mDNS time to find services
         val servers = discovery.servers.value
-        val match = servers.find { it.name == lastServerName }
+        val match = servers.find { it.name == _serverName.value }
         if (match != null && (match.host != lastHost || match.port != lastPort)) {
             // Server restarted on a different host/port — update and retry
             lastHost = match.host
