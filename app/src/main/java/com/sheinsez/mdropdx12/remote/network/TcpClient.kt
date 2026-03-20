@@ -19,6 +19,7 @@ class TcpClient(private val scope: CoroutineScope) {
     private var outputStream: OutputStream? = null
     private var readJob: Job? = null
     private var pingJob: Job? = null
+    private var connectJob: Job? = null
     private var lastPongReceived: Long = 0L
 
     private val _connectionState = MutableStateFlow(ConnectionState.Disconnected)
@@ -28,10 +29,17 @@ class TcpClient(private val scope: CoroutineScope) {
     val messages: SharedFlow<String> = _messages
 
     fun connect(host: String, port: Int, pin: String, deviceId: String, deviceName: String) {
-        scope.launch(Dispatchers.IO) {
-            _connectionState.value = ConnectionState.Connecting
+        // Cancel any in-progress connect and clean up existing connection
+        connectJob?.cancel()
+        closeSocket()
+
+        _connectionState.value = ConnectionState.Connecting
+        connectJob = scope.launch(Dispatchers.IO) {
             try {
                 val sock = Socket()
+                sock.soTimeout = 0          // blocking reads
+                sock.keepAlive = true        // TCP keepalive
+                sock.tcpNoDelay = true       // disable Nagle for responsiveness
                 sock.connect(InetSocketAddress(host, port), 5000)
                 socket = sock
                 outputStream = sock.getOutputStream()
@@ -41,6 +49,7 @@ class TcpClient(private val scope: CoroutineScope) {
                 send("AUTH|$pin|$deviceId|$deviceName")
                 _connectionState.value = ConnectionState.AuthPending
             } catch (e: IOException) {
+                closeSocket()
                 _connectionState.value = ConnectionState.Disconnected
             }
         }
@@ -63,12 +72,19 @@ class TcpClient(private val scope: CoroutineScope) {
     }
 
     fun disconnect() {
-        readJob?.cancel()
+        connectJob?.cancel()
         pingJob?.cancel()
+        readJob?.cancel()
+        closeSocket()
+        _connectionState.value = ConnectionState.Disconnected
+    }
+
+    private fun closeSocket() {
+        pingJob?.cancel()
+        readJob?.cancel()
         try { socket?.close() } catch (_: IOException) {}
         socket = null
         outputStream = null
-        _connectionState.value = ConnectionState.Disconnected
     }
 
     private suspend fun readLoop(input: InputStream) {
@@ -98,7 +114,11 @@ class TcpClient(private val scope: CoroutineScope) {
                 }
             }
         } catch (_: IOException) {}
-        disconnect()
+
+        // Only set disconnected if we weren't explicitly cancelled (avoid racing with new connect)
+        if (currentCoroutineContext().isActive) {
+            disconnect()
+        }
     }
 
     private suspend fun handleMessage(message: String) {
@@ -120,11 +140,13 @@ class TcpClient(private val scope: CoroutineScope) {
     }
 
     private fun startPing() {
+        pingJob?.cancel()
         lastPongReceived = System.currentTimeMillis()
         pingJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(15_000)
-                if (System.currentTimeMillis() - lastPongReceived > 20_000) {
+                // Allow 2 missed pongs (45s total) before considering dead
+                if (System.currentTimeMillis() - lastPongReceived > 45_000) {
                     disconnect()
                     break
                 }

@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.*
 
 class ConnectionManager(private val scope: CoroutineScope) {
     val tcpClient = TcpClient(scope)
-    var mdnsDiscovery: MdnsDiscovery? = null  // Set from Activity/Application with context
+    var mdnsDiscovery: MdnsDiscovery? = null
     private var reconnectJob: Job? = null
     private var lastHost: String? = null
     private var lastPort: Int = 9270
@@ -18,6 +18,7 @@ class ConnectionManager(private val scope: CoroutineScope) {
     private val _serverName = MutableStateFlow("")
     val serverName: StateFlow<String> = _serverName
     private var consecutiveFailures: Int = 0
+    private var intentionalDisconnect = false
 
     private val _isReconnecting = MutableStateFlow(false)
     val isReconnecting: StateFlow<Boolean> = _isReconnecting
@@ -31,11 +32,13 @@ class ConnectionManager(private val scope: CoroutineScope) {
         lastPin = pin
         lastDeviceId = deviceId
         lastDeviceName = deviceName
+        intentionalDisconnect = false
         stopReconnect()
         tcpClient.connect(host, port, pin, deviceId, deviceName)
     }
 
     fun disconnect() {
+        intentionalDisconnect = true
         stopReconnect()
         tcpClient.disconnect()
         lastHost = null
@@ -45,18 +48,26 @@ class ConnectionManager(private val scope: CoroutineScope) {
 
     fun enableAutoReconnect() {
         scope.launch {
-            tcpClient.connectionState.collect { state ->
-                if (state == ConnectionState.Disconnected && lastHost != null) {
-                    startReconnect()
-                } else {
-                    stopReconnect()
+            tcpClient.connectionState
+                .dropWhile { it == ConnectionState.Disconnected } // skip initial state
+                .collect { state ->
+                    when (state) {
+                        ConnectionState.Disconnected -> {
+                            if (!intentionalDisconnect && lastHost != null) {
+                                startReconnect()
+                            }
+                        }
+                        ConnectionState.Connected -> {
+                            stopReconnect()
+                        }
+                        else -> {} // Connecting/AuthPending — wait
+                    }
                 }
-            }
         }
     }
 
     fun onResume() {
-        if (tcpClient.connectionState.value == ConnectionState.Disconnected && lastHost != null) {
+        if (tcpClient.connectionState.value == ConnectionState.Disconnected && lastHost != null && !intentionalDisconnect) {
             connect(lastHost!!, lastPort, lastPin, lastDeviceId, lastDeviceName)
         }
     }
@@ -72,15 +83,21 @@ class ConnectionManager(private val scope: CoroutineScope) {
         _isReconnecting.value = true
         consecutiveFailures = 0
         reconnectJob = scope.launch {
-            while (isActive && tcpClient.connectionState.value == ConnectionState.Disconnected) {
-                delay(2000)
+            while (isActive && lastHost != null) {
+                delay(3000)
+                // Re-check state — may have connected while we were waiting
+                if (tcpClient.connectionState.value != ConnectionState.Disconnected) break
+
                 lastHost?.let { host ->
                     tcpClient.connect(host, lastPort, lastPin, lastDeviceId, lastDeviceName)
-                    delay(3000)
-                    // Check if still disconnected after attempt
-                    if (tcpClient.connectionState.value == ConnectionState.Disconnected) {
+
+                    // Wait for the connection attempt to resolve
+                    val connected = tcpClient.connectionState
+                        .filter { it == ConnectionState.Connected || it == ConnectionState.Disconnected }
+                        .first()
+
+                    if (connected == ConnectionState.Disconnected) {
                         consecutiveFailures++
-                        // After 3 failures, try mDNS re-discovery (server may have restarted on new port)
                         if (consecutiveFailures >= 3 && _serverName.value.isNotEmpty()) {
                             tryRediscover()
                         }
@@ -96,11 +113,10 @@ class ConnectionManager(private val scope: CoroutineScope) {
     private suspend fun tryRediscover() {
         val discovery = mdnsDiscovery ?: return
         discovery.startDiscovery()
-        delay(3000) // Give mDNS time to find services
+        delay(3000)
         val servers = discovery.servers.value
         val match = servers.find { it.name == _serverName.value }
         if (match != null && (match.host != lastHost || match.port != lastPort)) {
-            // Server restarted on a different host/port — update and retry
             lastHost = match.host
             lastPort = match.port
             consecutiveFailures = 0
