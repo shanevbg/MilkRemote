@@ -1,10 +1,12 @@
 # Changelog
 
-## v1.2.0
+## v1.3.0
 
 ### New Features
 - **Button templates** — add buttons from 80+ predefined MDropDX12 actions organized into 12 categories (Presets, Media, Window, Display, Opacity, Visuals, Effects, Quality, Spout, Info/Debug, open Windows). Searchable template picker with one-tap add.
 - **Developer documentation** — setup guides for Ubuntu 24.04, Fedora 43, and Windows 11 covering JDK, SDK, build, and ADB deploy. Architecture guide with walkthrough for adding controls, screens, and button types.
+
+## v1.2.0
 
 ### Bug Fixes
 - Fix TCP connection instability causing duplicate connections
@@ -13,7 +15,6 @@
 ### Other
 - Set launcher icon in manifest
 - Bump targetSdk to 36 for Android 16 / Pixel 10
-- Add `.claude/` and `CLAUDE.md` to .gitignore
 
 ## v1.1.0
 
