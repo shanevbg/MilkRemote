@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+      A remote control for a machine on the network is a CONNECTED DEVICE, not
+      a media player. The media session that carries the volume keys is layered
+      on top and needs no playback claim, so none is made: declaring
+      mediaPlayback while playing nothing is a promise the platform checks.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!--
+      Required BY the connectedDevice service type, which is refused unless the
+      app also holds one of the permissions that prove it talks to a device.
+      This one is earned rather than borrowed: discovery listens for the PC's
+      UDP beacon, and a multicast lock is what keeps those packets arriving
+      when Wi-Fi would otherwise filter them with the screen off, which is
+      precisely the case the background service exists for.
+    -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Only to SHOW the ongoing notification; the service runs either way. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <application
+        android:name=".MdrApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="MilkRemote"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            The walk-away control, in the pull-down shade. It needs the
+            connection alive with no Activity in front, which is what the
+            background service provides; without that it shows as unavailable
+            rather than tapping into nothing.
+        -->
+        <service
+            android:name=".service.ScreensaverTileService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_view"
+            android:label="Screensaver"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".service.RemoteForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+    </application>
+</manifest>
