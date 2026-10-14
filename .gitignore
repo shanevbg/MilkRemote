@@ -1,0 +1,16 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.ap_
+*.aab
+keystore.jks
+
+# Local-only: agent notes and the push/commit guard hooks.
+private/

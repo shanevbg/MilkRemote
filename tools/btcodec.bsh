@@ -1,0 +1,241 @@
+// Put the Bluetooth codec back to LDAC 48 kHz / 16-bit, at the bitrate chosen
+// below.
+//
+// Run by a Tasker "Java Code" action (Tasker 6.6+), which holds only a loader
+// and reads this file from Tasker's own folder on the phone each time. To
+// change what the phone does, edit this and run:
+//
+//     python tools/btcodec.py --push
+//
+// It is BeanShell, so pre-Java-5 syntax: no generics, no lambdas.
+//
+// Android negotiates LDAC at 96 kHz / 32-bit / adaptive on every connection
+// and forgets what was chosen last time, so this runs each time a headset
+// connects. It makes the same call Developer options makes --
+// BluetoothA2dp.setCodecConfigPreference -- so nothing is tapped, no screen
+// opens, and it works with the phone locked.
+//
+// Android permits that call to an ordinary app only for a device the app holds
+// a companion-device association with. Each headset needs that once:
+//
+//     python tools/btcodec.py --associate
+//
+// A headset without it is reported as such and left alone.
+//
+// It only ever adjusts a connection that is already on LDAC. A headset that
+// has no LDAC, or one whose HD audio switch is off, was not negotiated onto it
+// and is left alone without comment: this fixes LDAC's settings, it does not
+// choose the codec.
+import android.bluetooth.BluetoothCodecConfig;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+LDAC = BluetoothCodecConfig.SOURCE_CODEC_TYPE_LDAC;
+RATE = BluetoothCodecConfig.SAMPLE_RATE_48000;
+BITS = BluetoothCodecConfig.BITS_PER_SAMPLE_16;
+// LDAC's bitrate mode: 1000 = 990 kbps, 1001 = 660, 1002 = 330, 1003 = adaptive.
+// 660 since 2026-10-13: 990 was too unstable across the headsets in use.
+// btcodec.py reads this line and BETTER below, so what it checks for cannot
+// disagree with them.
+QUALITY = 1001L;
+// ...except on a model that holds more, of which there is none so far. 990
+// cuts out on every WF-1000XM5. The XM6 looked as though it held it and was
+// given 990 alone as a trial on 2026-10-13: two dropouts in its first minute
+// of playback, heard as pops and crackling. So the list is empty.
+//
+// Entries are matched against the headset's name, which still carries the
+// model when it has been renamed ("Shane's WF-1000XM5"): new String[] { "XM7" }
+BETTER = 1000L;
+BETTER_ON = new String[0];
+A2DP = 2;   // BluetoothProfile.A2DP
+
+// Locals are declared with a type throughout. In BeanShell an untyped
+// assignment inside a method writes to an outer variable of the same name if
+// there is one, and the listener below runs on another thread.
+
+long qualityFor(String name) {
+    for (int i = 0; i < BETTER_ON.length; i++) {
+        if (name.indexOf(BETTER_ON[i]) >= 0) return BETTER;
+    }
+    return QUALITY;
+}
+
+String kbps(long q) {
+    // Unset reads as 0, and unset is what Android calls best effort: adaptive.
+    return (q == 1000L) ? "990 kbps" : (q == 1001L) ? "660 kbps"
+        : (q == 1002L) ? "330 kbps" : "adaptive";
+}
+
+boolean isWanted(Object c, long q) {
+    return c != null && c.getCodecType() == LDAC && c.getSampleRate() == RATE
+        && c.getBitsPerSample() == BITS && c.getCodecSpecific1() == q;
+}
+
+// The request itself. The priority is the one Developer options uses: it is
+// what pins the choice.
+//
+// A request that changes only the bitrate of a connection already at this
+// rate and depth lands in the config and never reaches the encoder. At
+// connect that cannot happen, since Android's default is another rate.
+Object configFor(long q) {
+    Object b = Class.forName("android.bluetooth.BluetoothCodecConfig$Builder").newInstance();
+    b.setCodecType(LDAC);
+    b.setCodecPriority(BluetoothCodecConfig.CODEC_PRIORITY_HIGHEST);
+    b.setSampleRate(RATE);
+    b.setBitsPerSample(BITS);
+    b.setChannelMode(BluetoothCodecConfig.CHANNEL_MODE_STEREO);
+    b.setCodecSpecific1(q);
+    return b.build();
+}
+
+// The capabilities carry bitmasks of every rate and depth the headset offers.
+boolean canDo(Object status) {
+    java.util.List caps = status.getCodecsSelectableCapabilities();
+    for (int i = 0; i < caps.size(); i++) {
+        Object cap = caps.get(i);
+        if (cap.getCodecType() == LDAC && (cap.getSampleRate() & RATE) != 0
+                && (cap.getBitsPerSample() & BITS) != 0) return true;
+    }
+    return false;
+}
+
+// What a config is, in the words the settings screen uses.
+String describe(Object c) {
+    int r = c.getSampleRate();
+    int b = c.getBitsPerSample();
+    String rate = (r == 1) ? "44.1" : (r == 2) ? "48" : (r == 4) ? "88.2" : (r == 8) ? "96" : "?";
+    String bits = (b == 1) ? "16" : (b == 2) ? "24" : (b == 4) ? "32" : "?";
+    return rate + " kHz / " + bits + "-bit / " + kbps(c.getCodecSpecific1());
+}
+
+// Returns { everything that was found, the part of it worth a toast }.
+String[] run() {
+    Object adapter = context.getSystemService("bluetooth").getAdapter();
+    if (adapter == null || !adapter.isEnabled()) return new String[] { "", "" };
+
+    // The A2DP proxy only arrives through a listener, on the main thread.
+    CountDownLatch latch = new CountDownLatch(1);
+    Object[] holder = new Object[1];
+    boolean[] gaveUp = new boolean[1];
+    InvocationHandler handler = new InvocationHandler() {
+        invoke(Object proxy, Method m, Object[] a) {
+            String called = m.getName();
+            if (called.equals("onServiceConnected")) {
+                // One that turns up after the wait below was abandoned has
+                // nobody left to close it, so it is handed straight back.
+                if (gaveUp[0]) {
+                    adapter.closeProfileProxy(A2DP, a[1]);
+                } else {
+                    holder[0] = a[1];
+                    latch.countDown();
+                }
+            }
+            if (called.equals("hashCode")) return new Integer(System.identityHashCode(proxy));
+            if (called.equals("equals")) return new Boolean(proxy == a[0]);
+            if (called.equals("toString")) return "btcodec";
+            return null;
+        }
+    };
+    Class type = Class.forName("android.bluetooth.BluetoothProfile$ServiceListener");
+    Object listener = Proxy.newProxyInstance(type.getClassLoader(), new Class[] { type }, handler);
+    adapter.getProfileProxy(context, listener, A2DP);
+    if (!latch.await(8, TimeUnit.SECONDS)) {
+        gaveUp[0] = true;
+        if (holder[0] != null) adapter.closeProfileProxy(A2DP, holder[0]);
+        return new String[] { "no A2DP service", "btcodec: no A2DP service" };
+    }
+    Object a2dp = holder[0];
+
+    // Asked too soon after connecting, the stack's own negotiation lands
+    // afterwards and overwrites it. So this does not set once and trust it: it
+    // keeps looking until the config has been right three looks running.
+    //
+    // The event that starts this fires on a disconnect too. Then nothing is
+    // connected and there is nothing to say, so both strings stay empty -- but
+    // it keeps looking for a while, because the next headset is often on its
+    // way and its own event is dropped while this run is still going.
+    String found = "";
+    String toast = "";
+    try {
+        long deadline = System.currentTimeMillis() + 45000;
+        int look = 0;
+        // It asks at once, again on the next look, then at doubling gaps:
+        // about 0, 2, 6, 14 and 30 seconds in. A stack too busy to listen now
+        // may listen in ten seconds, and one that keeps undoing the request is
+        // not worth fighting -- every request that lands interrupts the audio.
+        int nextAsk = 0;
+        int gap = 1;
+        int good = 0;
+        int empty = 0;
+        while (System.currentTimeMillis() < deadline) {
+            java.util.List devices = a2dp.getConnectedDevices();
+            if (devices.size() == 0 && ++empty >= 8) break;
+            boolean pending = false;
+            boolean ask = look >= nextAsk;
+            boolean asked = false;
+            StringBuffer all = new StringBuffer();
+            StringBuffer said = new StringBuffer();
+            for (int i = 0; i < devices.size(); i++) {
+                Object d = devices.get(i);
+                String name = d.getName();
+                if (name == null) name = "headset";
+                long q = qualityFor(name);
+                String line;
+                try {
+                    Object status = a2dp.getCodecStatus(d);
+                    Object cur = (status == null) ? null : status.getCodecConfig();
+                    if (cur == null) {
+                        pending = true;
+                        line = name + ": no codec yet";
+                        said.append(line + "\n");
+                    } else if (cur.getCodecType() != LDAC || !canDo(status)) {
+                        line = name + ": not on LDAC, left alone";
+                    } else if (isWanted(cur, q)) {
+                        line = name + ": LDAC 48 kHz / 16-bit / " + kbps(q);
+                        said.append(line + "\n");
+                    } else {
+                        pending = true;
+                        if (ask) { a2dp.setCodecConfigPreference(d, configFor(q)); asked = true; }
+                        line = name + ": could not set LDAC 48 kHz / 16-bit / " + kbps(q)
+                            + ", still " + describe(cur);
+                        said.append(line + "\n");
+                    }
+                } catch (SecurityException e) {
+                    line = name + ": not associated with Tasker, run btcodec.py --associate";
+                    said.append(line + "\n");
+                }
+                all.append(line + "\n");
+            }
+            if (asked) {
+                nextAsk = look + gap;
+                gap = gap * 2;
+            }
+            if (devices.size() > 0) {
+                found = all.toString().trim();
+                toast = said.toString().trim();
+            }
+            if (devices.size() > 0 && !pending) {
+                if (++good >= 3) break;
+            } else {
+                good = 0;
+            }
+            look++;
+            Thread.sleep(2000);
+        }
+    } finally {
+        adapter.closeProfileProxy(A2DP, a2dp);
+    }
+    return new String[] { found, toast };
+}
+
+try {
+    out = run();
+} catch (Throwable e) {
+    out = new String[] { "btcodec failed: " + e, "btcodec failed: " + e };
+}
+result = out[0];
+if (out[1].length() > 0) tasker.showToast(out[1]);
+return result;

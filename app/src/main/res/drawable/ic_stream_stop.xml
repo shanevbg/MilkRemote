@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stop, for the media session's own Stop button. The platform has no stop
+     icon of its own to lend, and a custom action's icon has to be a resource
+     of this package for the system media player to draw it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?android:attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M6,6h12v12H6z" />
+</vector>
